@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Annotated
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
@@ -35,7 +36,7 @@ def verify_token(token: str, settings: Settings) -> dict:
 
 def require_user(
     request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> dict:
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)

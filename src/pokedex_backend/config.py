@@ -24,7 +24,7 @@ class Settings:
         return f"https://login.microsoftonline.com/{self.tenant_id}/discovery/v2.0/keys"
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         def required(name: str) -> str:
             value = os.environ.get(name, "").strip()
             if not value:
