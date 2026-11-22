@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from typing import Annotated
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -22,7 +24,16 @@ AskFn = Callable[[Settings, str, str], Awaitable[ChatResponse]]
 
 def create_app(settings: Settings | None = None, ask: AskFn | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
-    app = FastAPI(title="Pokedex backend", version="0.1.0")
+    http = httpx.AsyncClient()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            await http.aclose()
+
+    app = FastAPI(title="Pokedex backend", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
 
     app.add_middleware(
@@ -33,16 +44,10 @@ def create_app(settings: Settings | None = None, ask: AskFn | None = None) -> Fa
         allow_credentials=False,
     )
 
-    http = httpx.AsyncClient()
-
     async def default_ask(s: Settings, message: str, user_oid: str) -> ChatResponse:
         return await ask_agent(http, s, message, user_oid)
 
     ask_fn: AskFn = ask or default_ask
-
-    @app.on_event("shutdown")
-    async def _close_http() -> None:
-        await http.aclose()
 
     @app.middleware("http")
     async def request_id(request: Request, call_next):
@@ -56,7 +61,9 @@ def create_app(settings: Settings | None = None, ask: AskFn | None = None) -> Fa
         return {"status": "ok"}
 
     @app.post("/api/v1/chat", response_model=ChatResponse)
-    async def chat(body: ChatRequest, claims: dict = Depends(require_user)) -> ChatResponse:
+    async def chat(
+        body: ChatRequest, claims: Annotated[dict, Depends(require_user)]
+    ) -> ChatResponse:
         oid = str(claims.get("oid", ""))
         try:
             result = await ask_fn(settings, body.message, oid)
